@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="潮州当前天气：温度、体感、湿度、风力、降水与气压实时更新。" />
+    <meta name="theme-color" content="#082e3a" />
+    <title>潮州此刻天气</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --ink: #f4fbf8;
+        --muted: #a9c6c5;
+        --line: rgba(202, 239, 227, 0.17);
+        --panel: rgba(8, 45, 55, 0.68);
+        --accent: #a8f0cf;
+        --accent-strong: #52d6b0;
+        --deep: #031b25;
+        --blue: #0d5361;
+      }
+
+      * { box-sizing: border-box; }
+
+      [hidden] { display: none !important; }
+
+      html { min-width: 320px; background: var(--deep); }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at 78% 12%, rgba(82, 214, 176, 0.2), transparent 30rem),
+          radial-gradient(circle at 4% 72%, rgba(47, 136, 161, 0.22), transparent 28rem),
+          linear-gradient(150deg, #031721 0%, #073541 52%, #062530 100%);
+        font-family: Inter, "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      button, a { font: inherit; }
+
+      .shell {
+        width: min(1180px, calc(100% - 40px));
+        min-height: 100vh;
+        margin: 0 auto;
+        padding: 38px 0 30px;
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        gap: 28px;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+      }
+
+      .place { display: flex; align-items: center; gap: 14px; }
+
+      .seal {
+        width: 48px;
+        height: 48px;
+        border: 1px solid rgba(168, 240, 207, 0.42);
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        color: var(--accent);
+        font: 700 1.05rem/1 serif;
+        letter-spacing: -0.08em;
+        box-shadow: inset 0 0 0 5px rgba(168, 240, 207, 0.04);
+      }
+
+      h1 {
+        margin: 0;
+        font-family: Georgia, "Noto Serif SC", "Songti SC", serif;
+        font-size: clamp(1.25rem, 2vw, 1.6rem);
+        font-weight: 600;
+        letter-spacing: 0.04em;
+      }
+
+      .place p, .updated { margin: 4px 0 0; color: var(--muted); font-size: 0.875rem; }
+
+      .refresh {
+        min-height: 44px;
+        padding: 0 17px;
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        color: var(--ink);
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        cursor: pointer;
+        transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+      }
+
+      .refresh:hover { background: rgba(255, 255, 255, 0.1); border-color: rgba(168, 240, 207, 0.34); }
+      .refresh:active { transform: translateY(1px); }
+      .refresh:focus-visible { outline: 3px solid rgba(168, 240, 207, 0.5); outline-offset: 3px; }
+      .refresh[disabled] { cursor: wait; opacity: 0.68; }
+
+      .refresh-mark {
+        width: 16px;
+        height: 16px;
+        border: 1.5px solid currentColor;
+        border-left-color: transparent;
+        border-radius: 50%;
+      }
+
+      .refresh[aria-busy="true"] .refresh-mark { animation: spin 900ms linear infinite; }
+
+      main { display: grid; place-items: center; }
+
+      .weather-card {
+        position: relative;
+        isolation: isolate;
+        width: 100%;
+        min-height: 520px;
+        overflow: hidden;
+        display: grid;
+        grid-template-columns: minmax(0, 1.3fr) minmax(320px, 0.7fr);
+        border: 1px solid var(--line);
+        border-radius: 32px;
+        background: linear-gradient(135deg, rgba(10, 62, 72, 0.76), rgba(3, 27, 37, 0.84));
+        box-shadow: 0 35px 90px rgba(0, 10, 16, 0.35);
+        backdrop-filter: blur(22px);
+      }
+
+      .weather-card::before {
+        content: "";
+        position: absolute;
+        z-index: -1;
+        width: 480px;
+        aspect-ratio: 1;
+        left: -210px;
+        bottom: -300px;
+        border: 1px solid rgba(168, 240, 207, 0.16);
+        border-radius: 50%;
+        box-shadow: 0 0 0 70px rgba(168, 240, 207, 0.025), 0 0 0 140px rgba(168, 240, 207, 0.02);
+      }
+
+      .primary {
+        min-width: 0;
+        padding: clamp(34px, 5vw, 72px);
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 44px;
+      }
+
+      .eyebrow {
+        margin: 0 0 12px;
+        color: var(--accent);
+        font-size: 0.875rem;
+        letter-spacing: 0.18em;
+      }
+
+      .condition {
+        margin: 0;
+        max-width: 700px;
+        font-family: Georgia, "Noto Serif SC", "Songti SC", serif;
+        font-size: clamp(2rem, 5.4vw, 4.8rem);
+        font-weight: 500;
+        line-height: 1.12;
+        letter-spacing: -0.03em;
+      }
+
+      .temperature-row { display: flex; align-items: flex-end; gap: clamp(20px, 4vw, 46px); flex-wrap: wrap; }
+
+      .temperature {
+        margin: 0;
+        font-size: clamp(6rem, 15vw, 11rem);
+        font-weight: 300;
+        line-height: 0.72;
+        letter-spacing: -0.09em;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .degree { color: var(--accent); font-size: 0.56em; vertical-align: top; margin-left: 0.08em; }
+
+      .feels {
+        padding-bottom: 4px;
+        color: var(--muted);
+        font-size: 1rem;
+        line-height: 1.65;
+      }
+
+      .feels strong { display: block; color: var(--ink); font-size: 1.45rem; font-weight: 500; }
+
+      .details {
+        border-left: 1px solid var(--line);
+        background: rgba(2, 25, 33, 0.2);
+        display: grid;
+        grid-template-rows: repeat(4, 1fr);
+      }
+
+      .metric {
+        min-height: 112px;
+        padding: 24px clamp(24px, 3.5vw, 42px);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .metric:last-child { border-bottom: 0; }
+      .metric-label { color: var(--muted); font-size: 0.9rem; }
+      .metric-value { margin-top: 8px; font-size: clamp(1.3rem, 2.2vw, 1.8rem); font-weight: 500; font-variant-numeric: tabular-nums; }
+
+      .gauge {
+        width: 52px;
+        height: 52px;
+        flex: 0 0 auto;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: conic-gradient(var(--accent-strong) calc(var(--fill, 0) * 1%), rgba(255, 255, 255, 0.07) 0);
+      }
+
+      .gauge::after { content: ""; width: 38px; height: 38px; border-radius: 50%; background: #0a3540; }
+
+      .wind-arrow {
+        width: 50px;
+        height: 50px;
+        display: grid;
+        place-items: center;
+        color: var(--accent);
+        font-size: 2rem;
+        transform: rotate(var(--wind-angle, 0deg));
+        transition: transform 400ms ease;
+      }
+
+      .status-panel {
+        grid-column: 1 / -1;
+        min-height: 520px;
+        padding: 40px;
+        display: none;
+        place-items: center;
+        text-align: center;
+      }
+
+      .status-panel.visible { display: grid; }
+      .status-copy { max-width: 420px; }
+      .status-copy h2 { margin: 18px 0 8px; font: 500 clamp(1.55rem, 4vw, 2.3rem)/1.2 Georgia, "Noto Serif SC", serif; }
+      .status-copy p { margin: 0; color: var(--muted); line-height: 1.7; }
+      .loader { width: 40px; height: 40px; margin: 0 auto; border: 2px solid rgba(168, 240, 207, 0.22); border-top-color: var(--accent); border-radius: 50%; animation: spin 900ms linear infinite; }
+
+      .retry {
+        margin-top: 24px;
+        min-height: 44px;
+        padding: 0 20px;
+        color: var(--deep);
+        background: var(--accent);
+        border: 0;
+        border-radius: 999px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      footer {
+        display: flex;
+        justify-content: space-between;
+        gap: 20px;
+        color: var(--muted);
+        font-size: 0.8rem;
+      }
+
+      footer p { margin: 0; }
+      footer a { color: inherit; text-underline-offset: 3px; }
+      footer a:hover { color: var(--ink); }
+
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      @media (max-width: 780px) {
+        .shell { width: min(100% - 24px, 620px); padding: 22px 0 20px; gap: 18px; }
+        header { align-items: flex-start; }
+        .place p { display: none; }
+        .refresh-label { display: none; }
+        .refresh { width: 44px; padding: 0; justify-content: center; }
+        .weather-card { min-height: 0; grid-template-columns: 1fr; border-radius: 24px; }
+        .primary { min-height: 390px; padding: 32px 26px 38px; gap: 46px; }
+        .condition { font-size: clamp(2rem, 11vw, 3.6rem); }
+        .temperature { font-size: clamp(6.2rem, 34vw, 9rem); }
+        .details { border-left: 0; border-top: 1px solid var(--line); grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(2, minmax(126px, auto)); }
+        .metric { min-height: 126px; padding: 22px; align-items: flex-start; flex-direction: column; border-right: 1px solid var(--line); }
+        .metric:nth-child(2n) { border-right: 0; }
+        .metric:nth-child(3) { border-bottom: 0; }
+        footer { flex-direction: column; gap: 8px; }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <header>
+        <div class="place">
+          <div class="seal" aria-hidden="true">潮州</div>
+          <div>
+            <h1>潮州此刻</h1>
+            <p>广东省潮州市 · 中国标准时间</p>
+          </div>
+        </div>
+        <div>
+          <button class="refresh" id="refresh" type="button" aria-label="刷新天气" aria-busy="false">
+            <span class="refresh-mark" aria-hidden="true"></span>
+            <span class="refresh-label">刷新天气</span>
+          </button>
+          <p class="updated" id="updated" aria-live="polite">正在获取最新天气…</p>
+        </div>
+      </header>
+
+      <main>
+        <section class="weather-card" aria-label="潮州当前天气">
+          <div class="status-panel visible" id="status-panel">
+            <div class="status-copy">
+              <div class="loader" id="loader" aria-hidden="true"></div>
+              <h2 id="status-title">正在读取潮州天气</h2>
+              <p id="status-message">连接气象数据，请稍候。</p>
+              <button class="retry" id="retry" type="button" hidden>重新获取</button>
+            </div>
+          </div>
+
+          <div class="primary" id="primary" hidden>
+            <div>
+              <p class="eyebrow">CURRENT CONDITIONS</p>
+              <p class="condition" id="condition">—</p>
+            </div>
+            <div class="temperature-row">
+              <p class="temperature"><span id="temperature">—</span><span class="degree">°</span></p>
+              <div class="feels">体感温度<strong id="apparent">—°C</strong></div>
+            </div>
+          </div>
+
+          <div class="details" id="details" hidden>
+            <div class="metric">
+              <div><div class="metric-label">相对湿度</div><div class="metric-value" id="humidity">—%</div></div>
+              <div class="gauge" id="humidity-gauge" aria-hidden="true"></div>
+            </div>
+            <div class="metric">
+              <div><div class="metric-label">风速 · 风向</div><div class="metric-value" id="wind">—</div></div>
+              <div class="wind-arrow" id="wind-arrow" aria-hidden="true">↑</div>
+            </div>
+            <div class="metric">
+              <div><div class="metric-label">当前降水</div><div class="metric-value" id="rain">— mm</div></div>
+              <div class="gauge" id="rain-gauge" aria-hidden="true"></div>
+            </div>
+            <div class="metric">
+              <div><div class="metric-label">海平面气压</div><div class="metric-value" id="pressure">— hPa</div></div>
+              <div class="gauge" id="pressure-gauge" aria-hidden="true"></div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer>
+        <p>天气数据约每 15 分钟自动更新</p>
+        <p>数据来源：<a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Open-Meteo</a></p>
+      </footer>
+    </div>
+
+    <script>
+      const API_URL = "https://api.open-meteo.com/v1/forecast?latitude=23.6567&longitude=116.6229&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,pressure_msl,wind_speed_10m,wind_direction_10m&timezone=Asia%2FShanghai";
+      const REFRESH_INTERVAL = 15 * 60 * 1000;
+
+      const weatherLabels = {
+        0: "晴朗，天色清澈",
+        1: "大致晴朗",
+        2: "局部多云",
+        3: "阴天，多云覆盖",
+        45: "有雾，能见度较低",
+        48: "雾凇天气",
+        51: "有小毛毛雨",
+        53: "有毛毛雨",
+        55: "有较强毛毛雨",
+        56: "有轻微冻毛毛雨",
+        57: "有较强冻毛毛雨",
+        61: "有小雨",
+        63: "有中雨",
+        65: "有大雨",
+        66: "有轻微冻雨",
+        67: "有较强冻雨",
+        71: "有小雪",
+        73: "有中雪",
+        75: "有大雪",
+        77: "有米雪",
+        80: "有阵雨",
+        81: "有较强阵雨",
+        82: "有强阵雨",
+        85: "有阵雪",
+        86: "有强阵雪",
+        95: "有雷暴",
+        96: "雷暴伴有小冰雹",
+        99: "强雷暴伴有冰雹"
+      };
+
+      const directionNames = ["北", "东北", "东", "东南", "南", "西南", "西", "西北"];
+      const $ = (id) => document.getElementById(id);
+      const refreshButton = $("refresh");
+      const retryButton = $("retry");
+      const statusPanel = $("status-panel");
+      const primary = $("primary");
+      const details = $("details");
+
+      function directionName(degrees) {
+        return directionNames[Math.round(degrees / 45) % 8];
+      }
+
+      function setLoading(isLoading) {
+        refreshButton.disabled = isLoading;
+        refreshButton.setAttribute("aria-busy", String(isLoading));
+      }
+
+      function showStatus(title, message, canRetry = false) {
+        statusPanel.classList.add("visible");
+        primary.hidden = true;
+        details.hidden = true;
+        $("status-title").textContent = title;
+        $("status-message").textContent = message;
+        $("loader").hidden = canRetry;
+        retryButton.hidden = !canRetry;
+      }
+
+      function renderWeather(current) {
+        const humidity = Math.round(current.relative_humidity_2m);
+        const precipitation = Number(current.precipitation || 0);
+        const pressure = Math.round(current.pressure_msl);
+        const windDirection = Number(current.wind_direction_10m || 0);
+
+        $("condition").textContent = weatherLabels[current.weather_code] || "天气状况已更新";
+        $("temperature").textContent = Math.round(current.temperature_2m);
+        $("apparent").textContent = `${Math.round(current.apparent_temperature)}°C`;
+        $("humidity").textContent = `${humidity}%`;
+        $("wind").textContent = `${Math.round(current.wind_speed_10m)} km/h · ${directionName(windDirection)}风`;
+        $("rain").textContent = `${precipitation.toFixed(1)} mm`;
+        $("pressure").textContent = `${pressure} hPa`;
+
+        $("humidity-gauge").style.setProperty("--fill", Math.min(100, Math.max(0, humidity)));
+        $("rain-gauge").style.setProperty("--fill", Math.min(100, precipitation * 18));
+        $("pressure-gauge").style.setProperty("--fill", Math.min(100, Math.max(0, (pressure - 950) / 1.1)));
+        $("wind-arrow").style.setProperty("--wind-angle", `${windDirection}deg`);
+
+        const formatted = String(current.time).slice(11, 16);
+        $("updated").textContent = `${formatted} 更新`;
+
+        statusPanel.classList.remove("visible");
+        primary.hidden = false;
+        details.hidden = false;
+      }
+
+      async function loadWeather() {
+        setLoading(true);
+        try {
+          const response = await fetch(API_URL, { cache: "no-store" });
+          if (!response.ok) throw new Error(`Weather request failed: ${response.status}`);
+          const data = await response.json();
+          if (!data.current) throw new Error("Weather response missing current conditions");
+          renderWeather(data.current);
+        } catch (error) {
+          console.error(error);
+          $("updated").textContent = "暂未更新";
+          showStatus("天气数据暂时不可用", "请检查网络后重试，我们会继续获取潮州的最新天气。", true);
+        } finally {
+          setLoading(false);
+        }
+      }
+
+      refreshButton.addEventListener("click", loadWeather);
+      retryButton.addEventListener("click", () => {
+        showStatus("正在重新连接", "连接气象数据，请稍候。");
+        loadWeather();
+      });
+
+      loadWeather();
+      setInterval(loadWeather, REFRESH_INTERVAL);
+    </script>
+  </body>
+</html>
+
